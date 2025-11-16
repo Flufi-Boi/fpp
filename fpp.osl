@@ -1,0 +1,473 @@
+// welcome to fpp :P
+// this is meant as an alternative to opal, with a few extra features i wanted :3
+// (a lot of this will be code from opal)
+// fpp is also fully compatible with opal (it uses opal.json)
+
+// package src
+local repo = "https://opal.mistium.com"
+
+local log @= def(d) -> (
+  if d.contains("\n") (
+    d = d.split("\n")
+    for i d.len (
+      terminal.writeLine(d[i])
+    )
+    return
+  )
+  terminal.writeLine(d)
+)
+
+local pwd = terminal.pwd.split("/")
+pwd[1] = ""
+pwd @= pwd.join("/")
+
+local c @= {
+  err: "#FF2929",
+  ok: "#31ba1c",
+  fpp: "#8457d9"
+}
+
+local fpp @= {
+  about: {
+    version: "1.0.0"
+  },
+  getPackages: def() -> (
+    local val @= self.open("packages.folder")
+    local resp @= self.resp
+    if val.exists (
+      local json = val.data.JsonParse()
+      if typeof(json) != "array" (
+        return resp("log", [
+          c.err, "packages/ seems to be corrupted, use ",
+          c.fpp, "fpp init",
+          c.err, " to reset your project"
+        ])
+      )
+      if json.len == 0 (
+        return resp("log", "No installed opal packages")
+      )
+      return resp("arr", json.map(v -> open(v, ["name"])[1]))
+    ) else (
+      return resp("log", [
+        c.err, "No packages/ found, use ",
+        c.opl, "fpp init",
+        c.err, " to setup your project"
+      ])
+    )
+  ),
+  open: def(path) -> (
+    local path = parseFilePath(pwd ++ "/" ++ path)
+    file "exists" path
+    local data = exists ? open(path) null
+    return { exists, data }
+  ),
+  fetchPackage: def(name) -> (
+    local json = self.fetchFile(name, "/package.json")
+    local exists = true
+    if typeof(json) != "object" (
+      json = {}
+      exists = false
+    )
+    return { exists, json }
+  ),
+  fetchFile: def(name, file) -> (
+    return (self.repo ++ "/packages/" ++ name ++ file).httpGet().JsonParse()
+  ),
+  install: def(name, bypass) -> (
+    local opal_json = self.open("opal.json").data.JsonParse()
+    local v = "latest"
+    name = name.split(":")
+    if name.len > 1 (
+      v = name[2].replace("_", ".")
+    )
+    
+    local data = self.fetchPackage(name[1])
+    if !data.exists (
+      log([opal.c.err, "No package found with that name"])
+      break
+    )
+    data @= data.json
+    
+    local cur = null
+    local vers @= data.versions
+    if v == "latest" (
+      cur @= vers[-1]
+    ) else (
+      for i vers.len (
+        if vers[i].version == v (
+          cur @= vers[i]
+          break
+        )
+      )
+    )
+    if cur == null (
+      log([c.err, "Unable to find specified version of package"])
+      return
+    )
+    
+    local install = true
+    if !bypass (
+      log("Install " ++ cur.name ++ "(" ++ cur.version ++ ") - size: " ++ cur.size ++ "?")
+      if terminal.input("y/n") != "y" (
+        install = false
+      )
+    )
+    if install (
+      if cur.install != null (
+        log("Found install script: " ++ cur.install)
+        // run the package's install script
+        local fn = function("opal", self.fetchFile(name[1], "/" ++ cur.version ++ "/" ++ cur.install))
+        void fn(fpp)
+        log("Finished running install script")
+      )
+      // write the script its to the /packages directory
+      file "goto_dir" self.pwd ++ "/packages"
+      log("Fetching package script")
+      local contents = self.fetchFile(name[1], "/" ++ cur.version ++ "/" ++ cur.main)
+      file "set_file" cur.name ++ ".osl" contents
+      log("Written package to drive")
+      
+      // write to the opal.json
+      file "goto_dir" self.pwd
+      log("Writing dependencies to opal.json")
+      opal_json.dependencies ??= {}
+      opal_json.dependencies[cur.name[1]] = cur.version
+      file "set_file" "opal.json" opal_json.JsonFormat()
+      log("Installed")
+    ) else (
+      log("Aborted")
+    )
+  ),
+  build: def() -> (
+    local cfg @= self.open("opal.json").data.JsonParse()
+    
+    local file @= self.open(cfg.main ?? "script.osl")
+    if !file.exists (
+      log([c.err, "script.osl not found, use ", c.fpp, "fpp init", c.err, " to create a new project"])
+      return
+    )
+    
+    local ast @= file.data.oslAST()
+    local queue = []
+    for i ast.len (
+      local line = ast[i][1].line
+      for j ast[i].len (
+        ast[i][j].line = line
+        void queue.append(ast[i][j])
+      )
+    )
+    log("Parsing script.osl")
+    log("Collecting imports")
+    
+    local imports @= {}
+    
+    if cfg.include != null (
+      for includeI cfg.include.len (
+        void queue.append({
+          type: "fnc",
+          data: "import",
+          parameters: [
+            {
+              type: "str",
+              data: cfg.include[includeI]
+            }
+          ]
+        })
+      )
+    )
+    
+    while queue.len > 0 (
+      local item @= queue.shift()
+      if item.left != null (
+        void queue.append(item.left)
+      )
+      if ["blk", "obj"].contains(item["type"]) (
+        local data @= item.data
+        for i data.len (
+          for j data[i].len (
+            void queue.append(data[i][j])
+          )
+        )
+      )
+      if item.right != null (
+        void queue.append(item.right)
+      )
+      if item["type"] == "fnc" and item.data == "import" (
+        local params @= item.parameters
+        local invalid_msg = "Invalid import statement on line "
+        if params.len != 1 (
+          log([c.err, invalid_msg ++ item.line ++ ", expected 1 parameter, got " ++ params.len])
+          return
+        )
+        if params[1]["type"] != "str" (
+          log([c.err, invalid_msg ++ item.line ++ ", expected string parameter, got " ++ params[1]["type"]])
+          return
+        )
+        local path = params[1].data
+        item.type = "mtd"
+        item.data = mtd.data
+        item.data[2].parameters[1].data = path
+        log("Collected " ++ path)
+        local parsed = path
+        if path.startsWith("./") (
+          parsed @= parsed.replaceFirst(".", self.pwd)
+        )
+        local parsed = parseFilePath(parsed)
+        if imports[path] != null (
+          continue
+        )
+        file "exists" parsed
+        if !exists (
+          log([c.err, "Import file not found: ", parsed])
+          return
+        )
+        local data = open(parsed)
+        if data == null (
+          log([c.err, "Failed to open import file: ", parsed])
+          return
+        )
+        if path.endsWith(".osl") (
+          try (
+            local ast_cur @= data.oslAST()
+            for i ast_cur.len (
+              local line = ast_cur[i][1].line
+              for j ast_cur[i].len (
+                ast_cur[i][j].line = line
+                void queue.append(ast_cur[i][j])
+              )
+            )
+          ) catch e (
+            log([c.err, "Failed to parse import file: ", parsed, "\nError: ", e])
+            return
+          )
+        )
+        imports[path] @= data
+      )
+      void item.delete("source")
+    )
+    
+    local prepend = []
+    void prepend.append("opal_imports = {}\ndef import(path) (\n  switch path (\n")
+    local import_keys @= imports.getKeys().reverse()
+    local indent = def(str) -> (
+      return str.replace("/^/gm", "  ")
+    )
+    for i import_keys.len (
+      local key = import_keys[i]
+      local data = indent(imports[key].strip())
+      local hash = "__imports__" ++ key.hashMD5()
+      log("Compiled " ++ key ++ " " ++ i ++ "/" ++ import_keys.len)
+      void prepend.append("case \"" ++ key ++ "\"")
+      if key.endsWith(".osl") (
+        void prepend.append("  class " ++ hash ++ " (\n" ++ indent(data ++ "\n)"))
+        void prepend.append("  return " ++ hash)
+      ) else (
+        void prepend.append("  return" + data.JsonStringify() ++ "\n")
+      )
+    )
+
+    local out = prepend.join("\n") ++ ")\n)\n" ++ file.data.replaceFirst("__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))","")
+
+    file "goto_dir" self.pwd
+    if !self.open("build.folder").exists (
+      log("Creating /build directory")
+      file "set_file" "build.folder"
+    )
+    file "goto_dir" self.pwd ++ "/build"
+    log("Writing built file")
+    file "set_file" "script.osl" out
+    log("Written to /build/script.osl")
+  ),
+  format: {
+    arr: v -> v.join(", ").wrapText(40)
+  }
+}
+
+fpp.c @= c
+fpp.log @= log
+fpp.pwd @= pwd
+fpp.repo @= repo
+fpp.resp @= (t, d) -> {t, d}
+
+local commands @= [
+  "install",
+  "uninstall",
+  "describe",
+  "list",
+  "search",
+  "sync",
+  "init",
+  "build",
+  "run"
+]
+
+
+if args.len == 0 (
+  log("Fpp " ++ fpp.about.version)
+  log("")
+  log("fpp <command>")
+  log(fpp.format.arr(commands))
+  return
+)
+
+if args[1] != "init" (
+  local opal_json = fpp.open("opal.json")
+  if !opal_json.exists (
+    log([fpp.c.err, "opal.json doesnt exist"])
+    return
+  )
+  opal_json = opal_json.data.JsonParse()
+  if typeof(opal_json) != "object" (
+    log([fpp.c.err, "opal.json seems to be corrupted"])
+    return
+  )
+)
+
+switch args[1] (
+  case "init"
+    // initialize a new fpp project
+    file "goto_dir" fpp.pwd
+    log("Create new opal/fpp project at " ++ fpp.pwd ++ "?")
+    if terminal.input("y/n") == "y" (
+      try (
+        file "open" "packages.folder" "onlyaccess"
+        file "delete"
+        file "close"
+      )
+      file "set_file" "packages.folder"
+      file "set_file" "opal.json" {
+        name: terminal.input("Name your project"),
+        version: "1.0.0",
+        description: terminal.input("Describe your project"),
+        main: "script.osl",
+        dependencies: {},
+        tags: []
+      }.JsonFormat()
+      local d @= "// import overwrite (fpp boilerplate)\n__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))\n\n"
+      file "set_file" "script.osl" d ++ "// welcome to your new opal/fpp project"
+      log("Finished writing")
+    ) else (
+      log("Aborted")
+    )
+    break
+  case "install"
+    // install a package
+    local dat = fpp.getPackages()
+    if dat.t[1] == c.err (
+      log(dat.d)
+      break
+    )
+    
+    fpp.install(args[2])
+    break
+  case "uninstall"
+    // uninstall a package
+    file "goto_dir" fpp.pwd ++ "/packages"
+    local packages = listFiles()
+    log("Found " ++ packages.len ++ " packages")
+    for i packages.len (
+      if packages[i].startsWith(args[2] ++ ":") (
+        try (
+          file "open" packages[i] "onlyaccess"
+          file "delete"
+          file "close"
+          log("Uninstalled " ++ packages[i])
+        )
+      )
+    )
+    // write to the opal.json
+    file "goto_dir" fpp.pwd
+    opal_json.dependencies ??= {}
+    opal_json.dependencies.delete(args[2])
+    file "set_file" "opal.json" opal_json.JsonFormat()
+    log("Removed dependencies from opal.json")
+    break
+  case "list"
+    // list all installed packages
+    local dat = fpp.getPackages()
+    if dat.t == "arr" (
+      dat.d = fpp.format.arr(dat.d)
+    )
+    log(dat.d)
+    break
+  case "describe"
+    // describe a package
+    local data = fpp.fetchPackage(args[2])
+    if !data.exists (
+      log([fpp.c.err, "No package found with that name"])
+      break
+    )
+    data @= data.json
+    local v = data.versions[-1]
+    log(v.name ++ " - " ++ v.version ++ " - " ++ v.size)
+    log("")
+    log(v.description.wrapText(60))
+    break
+  case "sync"
+    // sync dependencies from opal.json
+    local opal_json = fpp.open("opal.json")
+    if !opal_json.exists (
+      log([fpp.c.err, "opal.json doesnt exist"])
+      break
+    )
+    opal_json = opal_json.data.JsonParse()
+    if typeof(opal_json) != "object" (
+      log([fpp.c.err, "opal.json seems to be corrupted"])
+      break
+    )
+    if !opal_json.dependencies (
+      log("No dependencies found in opal.json")
+      break
+    )
+    log("Syncing dependencies from opal.json")
+    local deps @= opal_json.dependencies
+    if typeof(deps) != "object" (
+      log([fpp.c.err, "opal.json dependencies seems to be corrupted"])
+      break
+    )
+    local names @= deps.getKeys()
+    for i names.len (
+      local name = names[i]
+      local version = deps[name]
+      if version == null (
+        log([fpp.c.err, "No version specified for dependency: " ++ name])
+        continue
+      )
+      log("Installing " ++ name ++ "@" ++ version)
+      fpp.install(name ++ ":" ++ version, true)
+    )
+    break
+  case "build"
+    // bundle the project into a single file in /build
+    fpp.build()
+    break
+  case "run"
+    fpp.build()
+    log fpp.pwd
+    window.create(fpp.pwd ++ "/build/script.osl")
+    terminal.writeLine("Created process")
+    break
+  case "search"
+    // search for packages by name
+    local query = args[2].toLowerCase()
+    local dat = fpp.getPackages()
+    if dat.t[1] == c.err (
+      log(dat.d)
+      break
+    )
+    
+    local results @= []
+    for i dat.d.len (
+      if dat.d[i].toLowerCase().contains(query) (
+        results.append(dat.d[i])
+      )
+    )
+    
+    if results.len == 0 (
+      log("No packages found matching: " ++ query)
+    ) else (
+      log("Found " ++ results.len ++ " packages matching: " ++ query)
+      log(fpp.format.arr(results))
+    )
+    break
+)
