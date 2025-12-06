@@ -334,17 +334,28 @@ switch args[1] (
         file "delete"
         file "close"
       )
+      
       file "set_file" "packages.folder"
+      file "open" "packages.folder"
+      file "set" 11 "c #7a1212 square 0 2 10 4 c #f24b4b square -8 6 2 2 line -5 7 3 0 square 0 -1 10 5 w 8 square 0 -0.5 5 0"
+      file "close"
+      
+      file "set_file" "src.folder"
+      file "open" "src.folder"
+      file "set" 11 "c #0f5c3d square 0 2 10 4 c #1fd18a square -8 6 2 2 line -5 7 3 0 square 0 -1 10 5 w 8 square 0 -0.5 5 0"
+      file "close"
+      
+      local d @= "\n// import overwrite (fpp boilerplate)\n__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))\n\n"
+      file "set_file" "script.osl" d ++ "// welcome to your new opal/fpp project"
       file "set_file" "opal.json" {
         name: terminal.input("Name your project"),
         version: "1.0.0",
         description: terminal.input("Describe your project"),
         main: "script.osl",
         dependencies: {},
-        tags: []
+        tags: [],
+        include: []
       }.JsonFormat()
-      local d @= "// import overwrite (fpp boilerplate)\n__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))\n\n"
-      file "set_file" "script.osl" d ++ "// welcome to your new opal/fpp project"
       log("Finished writing")
     ) else (
       log("Aborted")
