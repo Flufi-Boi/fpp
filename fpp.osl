@@ -273,6 +273,10 @@ local fpp @= {
       log("Creating /build directory")
       file "set_file" "build.folder"
     )
+    file "open" "build.folder"
+    file "set" 11 "c #703d00 square 0 2 10 4 c #FF9800 square -8 6 2 2 line -5 7 3 0 square 0 -1 10 5 w 8 square 0 -0.5 5 0"
+    file "close"
+    
     file "goto_dir" self.pwd ++ "/build"
     log("Writing built file")
     file "set_file" "script.osl" out
