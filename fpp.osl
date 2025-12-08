@@ -246,7 +246,7 @@ local fpp @= {
       void item.delete("source")
     )
     
-    local prepend = []
+    local prepend = ["build @= { built: true, package:" + cfg.JsonStringify() + "}"]
     void prepend.append("opal_imports = {}\ndef import(path) (\n  switch path (\n")
     local import_keys @= imports.getKeys().reverse()
     local indent = def(str) -> (
@@ -266,7 +266,7 @@ local fpp @= {
       )
     )
 
-    local out = prepend.join("\n") ++ ")\n)\n" ++ file.data.replaceFirst("__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))","")
+    local out = prepend.join("\n") ++ ")\n)\n" ++ file.data.replaceFirst("__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))","").replaceFirst("build ??= { built: false, package: import(\"./opal.json\").JsonParse() }","")
 
     file "goto_dir" self.pwd
     if !self.open("build.folder").exists (
@@ -349,7 +349,7 @@ switch args[1] (
       file "set" 11 "c #0f5c3d square 0 2 10 4 c #1fd18a square -8 6 2 2 line -5 7 3 0 square 0 -1 10 5 w 8 square 0 -0.5 5 0"
       file "close"
       
-      local d @= "\n// import overwrite (fpp boilerplate)\n__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))\n\n"
+      local d @= "\n// fpp boilerplate\n__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))\nbuild ??= { built: false, package: import(\"./opal.json\").JsonParse() }\n\n"
       file "set_file" "script.osl" d ++ "// welcome to your new opal/fpp project"
       file "set_file" "opal.json" {
         name: terminal.input("Name your project"),
@@ -358,7 +358,8 @@ switch args[1] (
         main: "script.osl",
         dependencies: {},
         tags: [],
-        include: []
+        include: [],
+        scripts: {}
       }.JsonFormat()
       log("Finished writing")
     ) else (
@@ -458,7 +459,6 @@ switch args[1] (
     break
   case "run"
     fpp.build()
-    log fpp.pwd
     window.create(fpp.pwd ++ "/build/script.osl")
     terminal.writeLine("Created process")
     break
@@ -483,6 +483,55 @@ switch args[1] (
     ) else (
       log("Found " ++ results.len ++ " packages matching: " ++ query)
       log(fpp.format.arr(results))
+    )
+    break
+  case "script"
+    if args[2] == null (
+      log([fpp.c.err, "fpp script <name>"])
+      break
+    )
+    local opal_json = fpp.open("opal.json")
+    if !opal_json.exists (
+      log([fpp.c.err, "opal.json doesnt exist"])
+      break
+    )
+    opal_json = opal_json.data.JsonParse()
+    if typeof(opal_json) != "object" (
+      log([fpp.c.err, "opal.json seems to be corrupted"])
+      break
+    )
+    if typeof(opal_json.scripts) != "object" (
+      log([fpp.c.err, "opal.json contains no scripts / is not an object"])
+      break
+    )
+    local script = opal_json.scripts[args[2]]
+    
+    def runScr(string scr) (
+      if scr.startsWith("osl ") (
+        local mod @= open(scr.trim(5,-1).replaceFirst("./", terminal.pwd ++ "/"))
+        local mod @= function("",mod)()
+        return []
+      )
+      return terminal.run(scr)
+    )
+    
+    if typeof(script) == "array" (
+      for cmdi script.len (
+        local out @= runScr(script[cmdi]).join("\n")
+        if out != "" (
+          void terminal.writeLine(out)
+        )
+      )
+    ) else (
+      if typeof(script) == "string" (
+        local out @= runScr(script).join("\n")
+        if out != "" (
+          void terminal.writeLine(out)
+        )
+      ) else (
+        log([fpp.c.err, "script doesnt exist / is not a string or array"])
+        break
+      )
     )
     break
 )
