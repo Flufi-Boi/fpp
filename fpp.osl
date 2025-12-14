@@ -29,7 +29,7 @@ local c @= {
 
 local fpp @= {
   about: {
-    version: "1.0.0"
+    version: "1.1.1"
   },
   getPackages: def() -> (
     local val @= self.open("packages.folder")
@@ -191,6 +191,9 @@ local fpp @= {
       )
       if item.right != null (
         void queue.append(item.right)
+      )
+      if item["type"] == "fnc" and item.data == "function" (
+        void queue.append(item.parameters[2])
       )
       if item["type"] == "fnc" and item.data == "import" (
         local params @= item.parameters
