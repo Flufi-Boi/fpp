@@ -29,7 +29,7 @@ local c @= {
 
 local fpp @= {
   about: {
-    version: "1.1.1"
+    version: "1.1.2"
   },
   getPackages: def() -> (
     local val @= self.open("packages.folder")
