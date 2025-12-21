@@ -189,6 +189,11 @@ local fpp @= {
           )
         )
       )
+      if item.type == "arr" (
+        for i item.data.len (
+          void queue.append(item.data[i])
+        )
+      )
       if item.right != null (
         void queue.append(item.right)
       )
