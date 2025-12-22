@@ -20,6 +20,9 @@ simple icon parameter in opal.json that sets the built osl file's icon
   "icon": "icn code"
 }
 ```
+fpp also supports a file alongside opal.json called `icon.icn`, this will do the same thing as the parameter
+> [!NOTE]
+> if there is both a parameter and icon.icn, fpp will default to the parameter
 
 ## 'asset' importing
 fpp allows you to also include non osl files, such as js files,
