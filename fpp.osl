@@ -29,7 +29,7 @@ local c @= {
 
 local fpp @= {
   about: {
-    version: "1.2.0"
+    version: "1.2.1"
   },
   getPackages: def() -> (
     local val @= self.open("packages.folder")
@@ -289,6 +289,12 @@ local fpp @= {
     log("Writing built file")
     file "set_file" "script.osl" out
     log("Written to /build/script.osl")
+    local icn = self.open("icon.icn").data
+    if icn != null (
+      file "open" "script.osl"
+      file "set" 11 icn
+      file "close"
+    )
     if cfg.icon != null (
       file "open" "script.osl"
       file "set" 11 cfg.icon
