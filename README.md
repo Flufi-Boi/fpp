@@ -12,6 +12,15 @@ include allows you to... well include other files that arent specified with impo
 }
 ```
 
+## icon
+simple icon parameter in opal.json that sets the built osl file's icon
+```json5
+{
+  /* ... */
+  "icon": "icn code"
+}
+```
+
 ## 'asset' importing
 fpp allows you to also include non osl files, such as js files,
 
