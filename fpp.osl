@@ -29,7 +29,7 @@ local c @= {
 
 local fpp @= {
   about: {
-    version: "1.2.1"
+    version: "1.3.1"
   },
   getPackages: def() -> (
     local val @= self.open("packages.folder")
@@ -553,4 +553,108 @@ switch args[1] (
       )
     )
     break
+  case "count"
+    local opal_json = fpp.open("opal.json")
+    if !opal_json.exists (
+      log([fpp.c.err, "opal.json doesnt exist"])
+      break
+    )
+    opal_json = opal_json.data.JsonParse()
+    if typeof(opal_json) != "object" (
+      log([fpp.c.err, "opal.json seems to be corrupted"])
+      break
+    )
+    
+    countFile @= def(string filePath, string root, cur) -> (
+      cur ??= {}
+      local fileData @= open(filePath, [1,2,3,4])
+      
+      if fileData[3] == root and ["build","dist"].contains(fileData[2]) and fileData[1] == ".folder" (
+        return
+      )
+      
+      if fileData[1] == ".folder" (
+        local items @= open(filePath)
+        for i items.len (
+          void countFile(items[i], root, cur)
+        )
+      ) else (
+        local fileType = fileData[1].trim(2,-1)
+        cur[fileType] ??= { lines: 0, empty: 0, code: 0, comment: 0 }
+        
+        cur[fileType].lines += fileData[4].split("\n").len
+        cur[fileType].empty += fileData[4].split("\n").filter(l -> l.strip() == "").len
+        cur[fileType].code += fileData[4].split("\n").filter(l -> l.strip() != "").len
+        cur[fileType].comment += fileData[4].split("\n").filter(l -> l.strip().startsWith("//")).len
+      )
+      return cur
+    )
+    
+    local path = parseFilePath(pwd)
+    local data @= countFile(path, path)
+    
+    local types = data.getKeys()
+    local lines @= data.getValues()
+    
+    local typesW = "type".len
+    for i types.len (
+      typesW = max(typesW, types[i].len)
+    )
+    
+    local linesW = "lines".len
+    for i lines.len (
+      linesW = max(linesW, lines[i].lines.toStr().len)
+    )
+    local emptyW = "empty".len
+    for i lines.len (
+      emptyW = max(emptyW, lines[i].empty.toStr().len)
+    )
+    local codeW = "code".len
+    for i lines.len (
+      codeW = max(codeW, lines[i].code.toStr().len)
+    )
+    local commentW = "comment".len
+    for i lines.len (
+      commentW = max(commentW, lines[i].comment.toStr().len)
+    )
+    
+    local projectText = opal_json.name + "-" + opal_json.version
+    
+    local totalW = max(typesW + 3 + linesW + 3 + emptyW + 3 + commentW + 3 + codeW, projectText.len)
+    
+    //void terminal.writeLine("-" * totalW)
+    //void terminal.writeLine(projectText)
+    void terminal.writeLine("-" * totalW)
+    
+    local ln = ""
+    ln ++= "type".padEnd(" ", typesW)
+    ln += " "
+    ln += "lines".padEnd(" ", typesW)
+    ln += " "
+    ln += "empty".padEnd(" ", emptyW)
+    ln += " "
+    ln += "comment".padEnd(" ", commentW)
+    ln += " "
+    ln += "code".padEnd(" ", codeW)
+    void terminal.writeLine(ln)
+    
+    void terminal.writeLine("-" * totalW)
+    
+    for i types.len (
+      local ln = ""
+      
+      ln ++= types[i].padEnd(" ", typesW)
+      ln += " "
+      ln += lines[i].lines.toStr().padEnd(" ", linesW)
+      ln += " "
+      ln += lines[i].empty.toStr().padEnd(" ", emptyW)
+      ln += " "
+      ln += lines[i].comment.toStr().padEnd(" ", commentW)
+      ln += " "
+      ln += lines[i].code.toStr().padEnd(" ", codeW)
+      
+      void terminal.writeLine(ln)
+    )
+    
+    void terminal.writeLine("-" * totalW)
 )
