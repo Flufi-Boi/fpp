@@ -70,3 +70,6 @@ fpp provides a `build` global variable with the structure:
 
 > [!NOTE]
 > similarly to imports, you will need `build ??= { built: false, package: import("./opal.json").JsonParse() }` if you are running it without fpp, and fpp does also automatically remove this.
+
+## `fpp count`
+a basic line of code counter for projects
