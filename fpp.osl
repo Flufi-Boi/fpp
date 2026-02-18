@@ -29,7 +29,7 @@ local c @= {
 
 local fpp @= {
   about: {
-    version: "1.3.1"
+    version: "1.3.2"
   },
   getPackages: def() -> (
     local val @= self.open("packages.folder")
@@ -274,7 +274,7 @@ local fpp @= {
       )
     )
 
-    local out = prepend.join("\n") ++ ")\n)\n" ++ file.data.replaceFirst("__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))","").replaceFirst("build ??= { built: false, package: import(\"./opal.json\").JsonParse() }","")
+    local out = prepend.join("\n") ++ ")\n)\n" ++ file.data.replaceFirst("__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))","__import @= import").replaceFirst("build ??= { built: false, package: import(\"./opal.json\").JsonParse() }","")
 
     file "goto_dir" self.pwd
     if !self.open("build.folder").exists (
@@ -333,7 +333,7 @@ if args.len == 0 (
   return
 )
 
-if args[1] != "init" (
+if args[1] != "init" and args[1] != "count" (
   local opal_json = fpp.open("opal.json")
   if !opal_json.exists (
     log([fpp.c.err, "opal.json doesnt exist"])
@@ -554,20 +554,26 @@ switch args[1] (
     )
     break
   case "count"
-    local opal_json = fpp.open("opal.json")
-    if !opal_json.exists (
-      log([fpp.c.err, "opal.json doesnt exist"])
-      break
+    if false (
+      local opal_json = fpp.open("opal.json")
+      if !opal_json.exists (
+        log([fpp.c.err, "opal.json doesnt exist"])
+        break
+      ) else (
+        opal_json = opal_json.data.JsonParse()
+        if typeof(opal_json) != "object" (
+          log([fpp.c.err, "opal.json seems to be corrupted"])
+          break
+        )
+      )
     )
-    opal_json = opal_json.data.JsonParse()
-    if typeof(opal_json) != "object" (
-      log([fpp.c.err, "opal.json seems to be corrupted"])
-      break
-    )
+    
+    totalLines = 0
     
     countFile @= def(string filePath, string root, cur) -> (
       cur ??= {}
       local fileData @= open(filePath, [1,2,3,4])
+      fileData[4] = fileData[4].toStr()
       
       if fileData[3] == root and ["build","dist"].contains(fileData[2]) and fileData[1] == ".folder" (
         return
@@ -580,21 +586,31 @@ switch args[1] (
         )
       ) else (
         local fileType = fileData[1].trim(2,-1)
-        cur[fileType] ??= { lines: 0, empty: 0, code: 0, comment: 0 }
+        cur[fileType] ??= { fileType, lines: 0, empty: 0, code: 0, comment: 0 }
         
         cur[fileType].lines += fileData[4].split("\n").len
         cur[fileType].empty += fileData[4].split("\n").filter(l -> l.strip() == "").len
         cur[fileType].code += fileData[4].split("\n").filter(l -> l.strip() != "").len
         cur[fileType].comment += fileData[4].split("\n").filter(l -> l.strip().startsWith("//")).len
+        totalLines += fileData[4].split("\n").len
       )
       return cur
     )
     
     local path = parseFilePath(pwd)
     local data @= countFile(path, path)
+      .getValues()
+      .map(def(t) -> (
+        t.percent = round(t.lines / totalLines * 1000) / 10 ++ "%"
+        return t
+      ))
     
-    local types = data.getKeys()
-    local lines @= data.getValues()
+    data @= data
+      .sortBy("lines")
+      .reverse()
+    
+    local types = data.map(t -> t.fileType)
+    local lines @= data
     
     local typesW = "type".len
     for i types.len (
@@ -617,25 +633,31 @@ switch args[1] (
     for i lines.len (
       commentW = max(commentW, lines[i].comment.toStr().len)
     )
+    local percentW = "percent".len
+    for i lines.len (
+      percentW = max(percentW, lines[i].percent.toStr().len)
+    )
     
     local projectText = opal_json.name + "-" + opal_json.version
     
-    local totalW = max(typesW + 3 + linesW + 3 + emptyW + 3 + commentW + 3 + codeW, projectText.len)
+    local totalW = max(typesW + 3 + linesW + 3 + emptyW + 3 + commentW + 3 + codeW + 3 + percentW, projectText.len)
     
     //void terminal.writeLine("-" * totalW)
     //void terminal.writeLine(projectText)
     void terminal.writeLine("-" * totalW)
     
     local ln = ""
-    ln ++= "type".padEnd(" ", typesW)
+    ln ++= "type".padEnd(" ", typesW).toTitle()
     ln += " "
-    ln += "lines".padEnd(" ", typesW)
+    ln += "lines".padEnd(" ", linesW).toTitle()
     ln += " "
-    ln += "empty".padEnd(" ", emptyW)
+    ln += "empty".padEnd(" ", emptyW).toTitle()
     ln += " "
-    ln += "comment".padEnd(" ", commentW)
+    ln += "comment".padEnd(" ", commentW).toTitle()
     ln += " "
-    ln += "code".padEnd(" ", codeW)
+    ln += "code".padEnd(" ", codeW).toTitle()
+    ln += " "
+    ln += "percent".padEnd(" ", percentW).toTitle()
     void terminal.writeLine(ln)
     
     void terminal.writeLine("-" * totalW)
@@ -652,6 +674,8 @@ switch args[1] (
       ln += lines[i].comment.toStr().padEnd(" ", commentW)
       ln += " "
       ln += lines[i].code.toStr().padEnd(" ", codeW)
+      ln += " "
+      ln += lines[i].percent.toStr().padEnd(" ", percentW)
       
       void terminal.writeLine(ln)
     )
