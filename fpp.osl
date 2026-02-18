@@ -29,7 +29,7 @@ local c @= {
 
 local fpp @= {
   about: {
-    version: "1.3.2"
+    version: "1.3.3"
   },
   getPackages: def() -> (
     local val @= self.open("packages.folder")
@@ -255,6 +255,7 @@ local fpp @= {
     )
     
     local prepend = ["build @= { built: true, package:" + cfg.JsonStringify() + "}"]
+    void prepend.append("__old__import @= import")
     void prepend.append("opal_imports = {}\ndef import(path) (\n  switch path (\n")
     local import_keys @= imports.getKeys().reverse()
     local indent = def(str) -> (
@@ -273,6 +274,8 @@ local fpp @= {
         void prepend.append("  return" + data.JsonStringify() ++ "\n")
       )
     )
+    prepend.append("default")
+    prepend.append("  return __old__import(path)")
 
     local out = prepend.join("\n") ++ ")\n)\n" ++ file.data.replaceFirst("__import @= import;import @= i -> (i.endsWith(\".osl\") ? __import(i) open(i))","__import @= import").replaceFirst("build ??= { built: false, package: import(\"./opal.json\").JsonParse() }","")
 
